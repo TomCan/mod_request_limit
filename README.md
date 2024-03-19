@@ -14,14 +14,14 @@ apxs -i -a -c mod_request_limit.c
 ## Configuration
 The idea (can change) is to create 'buckets' that will receive the requests. On a bucket, you will define how many requests are allowed in what timeframe.
 ```
-<Server>
+<VirtualHost>
 ...
 # Create bucket named mywebsite, that allows 10 requests in 1 second
 ReqLimitBucket mywebsite 10 1
 # Create bucket named mylogin, that only allows 1 requests in 1 second
 ReqLimitBucket mylogin 1 1
 ...
-</Server>
+</VirtualHost>
 ```
 
 Once a bucket is created, you can assign requests to that bucket from Directory of Location directives
