@@ -4,6 +4,8 @@
 #include "http_config.h"
 #include "http_log.h"
 #include "http_request.h"
+/* Other libs required */
+#include <stdlib.h>
 
 /** structs */
 typedef struct {
@@ -64,7 +66,7 @@ void *create_server_conf(apr_pool_t *pool, server_rec *server) {
     mrl_config *cfg = apr_pcalloc(pool, sizeof(mrl_config));
     if(cfg) {
         /* Set some default values */
-        strcpy(cfg->src, "create_server_conf");
+        strcpy(cfg->src, "cs");
         cfg->enabled = 0;
         cfg->bucket = NULL;
         cfg->server = server;
@@ -85,7 +87,7 @@ void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     cfg->enabled = ( add->enabled == 0 ) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
 
-    strcpy(cfg->src, "merge_server_conf");
+    strcpy(cfg->src, "ms");
     
     return cfg;
 }
@@ -97,7 +99,7 @@ void *create_dir_conf(apr_pool_t *pool, char *arg) {
         /* Set some default values */
         cfg->enabled = 0;
         cfg->bucket = NULL;
-        strcpy(cfg->src, "create_dir_conf");
+        strcpy(cfg->src, "cd");
     }
     return cfg;
 }
@@ -111,7 +113,7 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     /* Merge configurations */
     cfg->enabled = ( add->enabled == 0 ) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
-    strcpy(cfg->src, "merge_dir_conf");
+    strcpy(cfg->src, "md");
     
     return cfg;
 }
@@ -119,9 +121,16 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD) {
 static int request_handler(request_rec *r)
 {
     ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, NULL, "request_handler %s", r->server->defn_name);
-
     mrl_config *conf = (mrl_config *) r->request_config;
+    mrl_config *server_conf = (mrl_config *) ap_get_module_config(r->server->module_config, &request_limit_module);
 
+    ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, NULL, "request_handler buckets %d", conf->buckets->nelts);
+    for (int i = 0; i < server_conf->buckets->nelts; i++) {
+        mrl_bucket **bucket_pointer = ((mrl_bucket **)server_conf->buckets->elts) + i;
+        ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, NULL, "request_handler %s", (*bucket_pointer)->name);
+        mrl_bucket *bucket = (mrl_bucket *)bucket_pointer;
+        ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, NULL, "request_handler %s", bucket->name);
+    }
 
 
     /* TODO: Check if this request is limited */
@@ -156,19 +165,22 @@ const char *mrl_create_bucket(cmd_parms *cmd, void *cfg, const char *name, const
     ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, cmd->server, "mrl_create_bucket %s %s %s", name, requests, timespan);
 
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    mrl_config    *conf = (mrl_config *) cfg;
+    mrl_config    *conf = (mrl_config *) ap_get_module_config(cmd->server->module_config, &request_limit_module);
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
 
     if(conf)
     {
         ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, cmd->server, "mrl_create_bucket %s", cmd->server->defn_name);
         ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, cmd->server, "mrl_create_bucket src %s", conf->src);
 
-        ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, cmd->server, "mrl_create_bucket %s", "1");
+        // Create bucket object and populate config
         mrl_bucket *bucket = apr_pcalloc(cmd->pool, sizeof(mrl_bucket));
-        ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, cmd->server, "mrl_create_bucket %s", "2");
         bucket->ips = apr_table_make(cmd->pool, 1024);
+        strcpy(bucket->name, name);
+        bucket->requests = strtol(requests, NULL, 10);
+        bucket->timespan = strtol(timespan, NULL, 10);
+
+        // Add newly created bucket to server config, segfault be here
         ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, cmd->server, "mrl_create_bucket %s", "3");
         *(mrl_bucket **)apr_array_push(conf->buckets) = bucket;
         ap_log_error (APLOG_MARK, APLOG_NOTICE, 0, cmd->server, "mrl_create_bucket %s", "4");
