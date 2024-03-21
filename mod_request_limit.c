@@ -5,6 +5,7 @@
 #include "http_log.h"
 #include "http_request.h"
 #include "apr_strings.h"
+#include "apr_network_io.h"
 /* Other libs required */
 #include <stdlib.h>
 #include <sys/time.h>
@@ -24,12 +25,16 @@ typedef struct {
     server_rec *server;           /* the corresponding server indicator */
     apr_array_header_t *buckets;        /* Buckets within this server */
     mrl_bucket *bucket;        /* Actual bucket to use by request */
+    int     netmask4;                /* netmask to apply to IPv4 address */
+    int     netmask6;                /* netmask to apply to IPv6 address */
 } mrl_config;
 
 /** prototypes */
 const char *mrl_create_bucket(cmd_parms *cmd, void *cfg, const char *arg1, const char *arg2, const char *arg3);
 const char *mrl_set_enabled(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg);
 uint64_t mrl_get_time_ms();
 void *create_server_conf(apr_pool_t *pool, server_rec *server);
 void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD);
@@ -44,6 +49,8 @@ static const command_rec directives[] =
     AP_INIT_TAKE1("ReqLimitEngine", mrl_set_enabled, NULL, ACCESS_CONF, "Enable or disable mod_request_limit processing"),
     AP_INIT_TAKE3("ReqLimitBucket", mrl_create_bucket, NULL, RSRC_CONF, "Create a bucket"),
     AP_INIT_TAKE1("ReqLimitSetBucket", mrl_set_bucket, NULL, ACCESS_CONF, "Set the name of the bucket to use"),
+    AP_INIT_TAKE1("ReqLimitSetNetmask4", mrl_set_netmask4, NULL, ACCESS_CONF, "Set the netmask bits for IPv4 addresses"),
+    AP_INIT_TAKE1("ReqLimitSetNetmask6", mrl_set_netmask6, NULL, ACCESS_CONF, "Set the netmask bits for IPv6 addresses"),
     { NULL }
 };
 
@@ -75,6 +82,8 @@ void *create_server_conf(apr_pool_t *pool, server_rec *server) {
         cfg->bucket = NULL;
         cfg->server = server;
         cfg->buckets = apr_array_make(pool, 5, sizeof(mrl_bucket*));
+        cfg->netmask4 = 32;
+        cfg->netmask6 = 64;
     }
     return cfg;
 }
@@ -91,6 +100,8 @@ void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     cfg->enabled = (add->enabled == 2) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
     cfg->buckets = (add->buckets) ? (apr_array_header_t *)add->buckets : (apr_array_header_t *)base->buckets;
+    cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
+    cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
 
     strcpy(cfg->src, "ms");
     
@@ -103,6 +114,8 @@ void *create_dir_conf(apr_pool_t *pool, char *arg) {
         /* Set some default values */
         cfg->enabled = 2;
         cfg->bucket = NULL;
+        cfg->netmask4 = 32;
+        cfg->netmask6 = 64;
         strcpy(cfg->src, "cd");
     }
     return cfg;
@@ -117,6 +130,8 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     /* Merge configurations */
     cfg->enabled = (add->enabled == 2) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
+    cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
+    cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
     strcpy(cfg->src, "md");
     
     return cfg;
@@ -128,7 +143,7 @@ static int request_handler(request_rec *r)
     mrl_config *server_conf = (mrl_config *) ap_get_module_config(r->server->module_config, &request_limit_module);
     mrl_config *per_dir_conf = (mrl_config *) ap_get_module_config(r->per_dir_config, &request_limit_module);
 
-    /* TODO: Check if this request is limited */
+    /* Check if this request is limited */
     if (per_dir_conf->enabled == 0 || (per_dir_conf->enabled == 2 && server_conf->enabled != 1)) {
         ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler not enabled");
         return (DECLINED);
@@ -156,10 +171,31 @@ static int request_handler(request_rec *r)
     }
 
     /* Add IP to list */
+    apr_sockaddr_t *ipAdd;
+    apr_sockaddr_info_copy(&ipAdd, r->useragent_addr, r->pool);
+
     char *ip;
-    char *hits;
+    apr_sockaddr_ip_get(&ip, ipAdd);
+
+    // check if IPv4 or IPv6
+    if (ipAdd->ipaddr_len == 4) {
+        // IPv4, use single uint32_t
+        uint32_t maskBits = (per_dir_conf->netmask4) ? per_dir_conf->netmask4 : server_conf->netmask4;
+        uint32_t mask = 0xffffffff >> (32 - maskBits);
+        uint32_t ip4;
+        // convert to single uint32_t, apply mask and copy back to char *ip
+        memcpy(&ip4, ipAdd->ipaddr_ptr, ipAdd->ipaddr_len);
+        ip4 = (ip4 & mask);
+        memcpy(ipAdd->ipaddr_ptr, &ip4, ipAdd->ipaddr_len);
+    } else {
+        // TODO: IPv6, use 4 uint32_t?
+    }
+
+    apr_sockaddr_ip_get(&ip, ipAdd);
+    ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler ip %s", ip);
+
     long numHits = 0;
-    apr_sockaddr_ip_get(&ip, r->useragent_addr);
+    char *hits;
     hits = (char *)apr_table_get(bucket->ips, ip);
     if (hits != NULL) {
         numHits = strtol(hits, NULL, 10);
@@ -172,7 +208,7 @@ static int request_handler(request_rec *r)
     /* TODO: Check if this request has exceeded the limit */
     if (numHits > bucket->requests) {
         /* block request */
-        ap_log_error (APLOG_MARK, APLOG_ERROR, 0, r->server, "request_handler blocked ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
+        ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler blocked ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
         return (HTTP_FORBIDDEN);
     } else {
         /* We're not acting on this request */
@@ -274,3 +310,36 @@ const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *name)
     return NULL;
 }
 
+/** ReqLimitSetNetmask4 mrl_set_netmask4 */
+const char *mrl_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg)
+{
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_netmask4 %s %s", cmd->server->defn_name, arg);
+
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config    *conf = (mrl_config *) cfg;
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    if(conf)
+    {
+        conf->netmask4 = strtol(arg, NULL, 10);
+    }
+
+    return NULL;
+}
+
+/** ReqLimitSetNetmask6 mrl_set_netmask6 */
+const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg)
+{
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_netmask6 %s %s", cmd->server->defn_name, arg);
+
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config    *conf = (mrl_config *) cfg;
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    if(conf)
+    {
+        conf->netmask6 = strtol(arg, NULL, 10);
+    }
+
+    return NULL;
+}
