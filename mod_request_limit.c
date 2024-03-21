@@ -192,7 +192,7 @@ static int request_handler(request_rec *r)
     }
 
     apr_sockaddr_ip_get(&ip, ipAdd);
-    ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler ip %s", ip);
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s", ip);
 
     long numHits = 0;
     char *hits;
@@ -322,6 +322,9 @@ const char *mrl_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg)
     if(conf)
     {
         conf->netmask4 = strtol(arg, NULL, 10);
+        if (conf->netmask4 < 0 || conf->netmask4 > 32) {
+            return "ReqLimitSetNetmask4 value must be between 0 and 32";
+        }
     }
 
     return NULL;
@@ -339,6 +342,9 @@ const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg)
     if(conf)
     {
         conf->netmask6 = strtol(arg, NULL, 10);
+        if (conf->netmask6 < 0 || conf->netmask4 > 128) {
+            return "ReqLimitSetNetmask6 value must be between 0 and 128";
+        }
     }
 
     return NULL;
