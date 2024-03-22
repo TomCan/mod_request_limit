@@ -1,5 +1,11 @@
 # ModReqLimit Change Log
 
+## unversioned changes in main
+
+- added ability to apply mask on client IP (impose limits on subnet rather than single IP)
+  - `ReqLimitSetNetmask4` and `ReqLimitSetNetmask6`
+- added documentation for all existing configuration directives
+
 ## v0.1.0
 
 Basic functionality, first "working" version.
@@ -11,10 +17,8 @@ Basic functionality, first "working" version.
 
 Following features are targets (or ideas) for the v1.0.0 release, should we ever get there.
 - exclude IPs 
-- Apply mask on client IP (impose limits on subnet rather than single IP)
 - custom status code when blocking
 - multiple buckets per request
 - sliding window/timeframe
 - extended block period once triggered
-- documentation
 - create .deb packages
