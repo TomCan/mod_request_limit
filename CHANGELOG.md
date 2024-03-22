@@ -4,7 +4,10 @@
 
 - added ability to apply mask on client IP (impose limits on subnet rather than single IP)
   - `ReqLimitSetNetmask4` and `ReqLimitSetNetmask6`
+- added custom status code when blocking
+  - `ReqLimitHTTPStatus`
 - added documentation for all existing configuration directives
+- improved validation of configuration directive arguments
 
 ## v0.1.0
 
@@ -17,7 +20,6 @@ Basic functionality, first "working" version.
 
 Following features are targets (or ideas) for the v1.0.0 release, should we ever get there.
 - exclude IPs 
-- custom status code when blocking
 - multiple buckets per request
 - sliding window/timeframe
 - extended block period once triggered
