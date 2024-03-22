@@ -82,9 +82,17 @@ The number of bits to use for the subnetmask. The default value is `32`, effecti
 Setting this to `0` would effectively translate every IP to `0.0.0.0`, making every user share the same counter.   
 
 ## ReqLimitSetNetmask6 Directive
-The `ReqLimitSetNetmask6 <bits>` directive allows you define the number of bits that are used for calculating the subnet mask that will be applied to the client IPv6 address. This allows you to group IPs from the same subnet together.
+The `ReqLimitSetNetmask6 bits` directive allows you define the number of bits that are used for calculating the subnet mask that will be applied to the client IPv6 address. This allows you to group IPs from the same subnet together.
 
 ### Arguments
 `bits`  
 The number of bits to use for the subnetmask. The default value is `64`, which is the standard IPv6 subnet size as defined by the IETF, and the smallest subnet that can be used locally if auto configuration is used.
 Setting this to `0` would effectively translate every IP to `::0`, making every user share the same counter.   
+
+## ReqLimitHTTPStatus Directive
+The `ReqLimitHTTPStatus status` directive defines the HTTP status code that is returned when a request is denied.
+
+### Arguments
+`status`  
+The HTTP status code that is returned. This can be any number between `100` and `999`, although Apache might return a `500` (internal server error) when
+and unknown status code is used. The default value is `429` (too many requests), but `503` (service unavailable) or `403` (forbidden) are also good candidates when using clients that don't handle `429` correct.

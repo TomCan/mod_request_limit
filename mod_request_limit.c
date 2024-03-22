@@ -28,8 +28,11 @@ typedef struct {
     mrl_bucket *bucket;             /* Actual bucket to use by request */
     int     netmask4;               /* netmask to apply to IPv4 address */
     int     netmask6;               /* netmask to apply to IPv6 address */
-    apr_array_header_t *excludes;   /* Buckets within this server */
+    int     statusCode;             /* HTTP Status code to return on block */
 } mrl_config;
+
+/** constants / defines */
+#define DEFAULT_STATUS_CODE 429
 
 /** prototypes */
 const char *mrl_create_bucket(cmd_parms *cmd, void *cfg, const char *arg1, const char *arg2, const char *arg3);
@@ -37,6 +40,7 @@ const char *mrl_set_enabled(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg);
 uint64_t mrl_get_time_ms();
 void *mrl_apply_mask4(char *dest, const char *ipv4_address_str, int mask_bits);
 void *mrl_apply_mask6(char *dest, const char *ipv6_address_str, int mask_bits);
@@ -55,6 +59,7 @@ static const command_rec directives[] =
     AP_INIT_TAKE1("ReqLimitSetBucket", mrl_set_bucket, NULL, ACCESS_CONF, "Set the name of the bucket to use"),
     AP_INIT_TAKE1("ReqLimitSetNetmask4", mrl_set_netmask4, NULL, ACCESS_CONF, "Set the netmask bits for IPv4 addresses"),
     AP_INIT_TAKE1("ReqLimitSetNetmask6", mrl_set_netmask6, NULL, ACCESS_CONF, "Set the netmask bits for IPv6 addresses"),
+    AP_INIT_TAKE1("ReqLimitHTTPStatus", mrl_set_httpstatus, NULL, ACCESS_CONF, "Set the HTTP status code used when blocking"),
     { NULL }
 };
 
@@ -88,6 +93,7 @@ void *create_server_conf(apr_pool_t *pool, server_rec *server) {
         cfg->buckets = apr_array_make(pool, 5, sizeof(mrl_bucket*));
         cfg->netmask4 = 32;
         cfg->netmask6 = 64;
+        cfg->statusCode = DEFAULT_STATUS_CODE;
     }
     return cfg;
 }
@@ -106,6 +112,7 @@ void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     cfg->buckets = (add->buckets) ? (apr_array_header_t *)add->buckets : (apr_array_header_t *)base->buckets;
     cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
     cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
+    cfg->statusCode = (add->statusCode) ? add->statusCode : base->statusCode;
 
     strcpy(cfg->src, "ms");
     
@@ -120,6 +127,7 @@ void *create_dir_conf(apr_pool_t *pool, char *arg) {
         cfg->bucket = NULL;
         cfg->netmask4 = 32;
         cfg->netmask6 = 64;
+        cfg->statusCode = 0;
         strcpy(cfg->src, "cd");
     }
     return cfg;
@@ -136,6 +144,7 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
     cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
     cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
+    cfg->statusCode = (add->statusCode) ? add->statusCode : base->statusCode;
     strcpy(cfg->src, "md");
     
     return cfg;
@@ -210,7 +219,7 @@ static int request_handler(request_rec *r)
     if (numHits > bucket->requests) {
         /* block request */
         ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler blocked ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
-        return (HTTP_FORBIDDEN);
+        return (per_dir_conf->statusCode ? per_dir_conf->statusCode : server_conf->statusCode);
     } else {
         /* We're not acting on this request */
         ap_log_error (APLOG_MARK, APLOG_TRACE1, 0, r->server, "request_handler allowed ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
@@ -395,6 +404,26 @@ const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg)
         conf->netmask6 = strtol(arg, NULL, 10);
         if (conf->netmask6 < 0 || conf->netmask4 > 128) {
             return "ReqLimitSetNetmask6 value must be between 0 and 128";
+        }
+    }
+
+    return NULL;
+}
+
+/** ReqLimitHTTPStatus mrl_set_httpstatus */
+const char *mrl_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg)
+{
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_httpstatus %s %s", cmd->server->defn_name, arg);
+
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config    *conf = (mrl_config *) cfg;
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    if(conf)
+    {
+        conf->statusCode = strtol(arg, NULL, 10);
+        if (conf->statusCode < 100 || conf->statusCode > 999) {
+            return "ReqLimitHTTPStatus value must be between 100 and 999";
         }
     }
 
