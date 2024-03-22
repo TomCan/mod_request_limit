@@ -13,21 +13,22 @@
 
 /** structs */
 typedef struct {
-    char    *name;      /* Name of the bucket */
+    char    *name;          /* Name of the bucket */
     int     requests;       /* Number of requests to allow */
     int     timespan;       /* Number of milliseconds between clears */
     long    lastReset;      /* Last time the bucket was cleared */
-    apr_table_t *ips;        /* Holds requests per ip */
+    apr_table_t *ips;       /* Holds requests per ip */
 } mrl_bucket;
 
 typedef struct {
     char    src[255];
-    int     enabled;        /* Enable or disable our module */
-    server_rec *server;           /* the corresponding server indicator */
-    apr_array_header_t *buckets;        /* Buckets within this server */
-    mrl_bucket *bucket;        /* Actual bucket to use by request */
-    int     netmask4;                /* netmask to apply to IPv4 address */
-    int     netmask6;                /* netmask to apply to IPv6 address */
+    int     enabled;                /* Enable or disable our module */
+    server_rec *server;             /* the corresponding server indicator */
+    apr_array_header_t *buckets;    /* Buckets within this server */
+    mrl_bucket *bucket;             /* Actual bucket to use by request */
+    int     netmask4;               /* netmask to apply to IPv4 address */
+    int     netmask6;               /* netmask to apply to IPv6 address */
+    apr_array_header_t *excludes;   /* Buckets within this server */
 } mrl_config;
 
 /** prototypes */
@@ -59,13 +60,13 @@ static const command_rec directives[] =
 
 module AP_MODULE_DECLARE_DATA request_limit_module = 
 { 
-    STANDARD20_MODULE_STUFF,
-    create_dir_conf, /* Per-directory configuration handler */
-    merge_dir_conf,  /* Merge handler for per-directory configurations */
-    create_server_conf, /* Per-server configuration handler */
-    merge_server_conf,  /* Merge handler for per-server configurations */
-    directives,      /* Any directives we may have for httpd */
-    register_hooks   /* Our hook registering function */
+    STANDARD20_MODULE_STUFF,    /* You know, standard 20 module stuff */
+    create_dir_conf,            /* Per-directory configuration handler */
+    merge_dir_conf,             /* Merge handler for per-directory configurations */
+    create_server_conf,         /* Per-server configuration handler */
+    merge_server_conf,          /* Merge handler for per-server configurations */
+    directives,                 /* Any directives we may have for httpd */
+    register_hooks              /* Our hook registering function */
 };
 
 static void register_hooks(apr_pool_t *pool)
