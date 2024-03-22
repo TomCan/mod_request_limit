@@ -22,3 +22,4 @@ Following features are targets (or ideas) for the v1.0.0 release, should we ever
 - sliding window/timeframe
 - extended block period once triggered
 - create .deb packages
+- allow the use of custom values (eg. user-agent string) to use as key instead of client IP
