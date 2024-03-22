@@ -1,6 +1,6 @@
 # ModReqLimit Change Log
 
-## unversioned changes in main
+## v0.2.0
 
 - added ability to apply mask on client IP (impose limits on subnet rather than single IP)
   - `ReqLimitSetNetmask4` and `ReqLimitSetNetmask6`
