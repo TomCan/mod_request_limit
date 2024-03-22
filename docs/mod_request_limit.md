@@ -4,6 +4,9 @@
 The `mod_request_limit` module limits the amount of requests a client can make to the server. Is uses a concept of buckets that track requests over a given time, an block the request 
 when the limits are exceeded (bucket spills over). You can define multiple buckets, allowing for different limits for different resources. 
 
+## Logging
+The `mod_request_limit` module logs block events as error, while most other information is logged at debug level. When troubleshooting, setting the LogLevel of `debug` or `trace1`. 
+
 ## ReqLimitEngine Directive
 The `ReqLimitEngine on|off` directive enables of disables the processing of the requests by the request limiting engine. When set to `off`, no request limit or counting of requests is performed. 
 

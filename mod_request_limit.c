@@ -186,13 +186,13 @@ static int request_handler(request_rec *r)
         int maskBits = (per_dir_conf->netmask4) ? per_dir_conf->netmask4 : server_conf->netmask4;
         masked = apr_pcalloc(r->pool, INET_ADDRSTRLEN);
         mrl_apply_mask4(masked, ip, maskBits);
+        ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s masked %d to %s", ip, maskBits, masked);
     } else {
         int maskBits = (per_dir_conf->netmask6) ? per_dir_conf->netmask6 : server_conf->netmask6;
         masked = apr_pcalloc(r->pool, INET6_ADDRSTRLEN);
         mrl_apply_mask6(masked, ip, maskBits);
+        ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s masked %d to %s", ip, maskBits, masked);
     }
-
-    ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler ip %s %s", ip, masked);
 
     long numHits = 0;
     char *hits;
