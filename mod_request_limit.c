@@ -321,10 +321,13 @@ const char *mrl_set_enabled(cmd_parms *cmd, void *cfg, const char *arg)
 
     if(conf)
     {
-        if(!strcasecmp(arg, "on"))
+        if (!strcasecmp(arg, "on")) {
             conf->enabled = 1;
-        else
+        } else if (!strcasecmp(arg, "off")) {
             conf->enabled = 0;
+        } else {
+            return "ReqLimitEngine value is invalid";
+        }
     }
 
     return NULL;
@@ -354,9 +357,7 @@ const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *name)
         }
     }
 
-    ap_log_error (APLOG_MARK, APLOG_WARNING, 0, cmd->server, "mrl_set_bucket bucket %s not found", name);
-
-    return NULL;
+    return "ReqLimitSetBucket bucket does not exist";
 }
 
 /** ReqLimitSetNetmask4 mrl_set_netmask4 */
