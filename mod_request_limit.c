@@ -9,6 +9,7 @@
 /* Other libs required */
 #include <stdlib.h>
 #include <sys/time.h>
+#include <arpa/inet.h> // For inet_pton and inet_ntop functions
 
 /** structs */
 typedef struct {
@@ -36,6 +37,8 @@ const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg);
 uint64_t mrl_get_time_ms();
+void *mrl_apply_mask4(char *dest, const char *ipv4_address_str, int mask_bits);
+void *mrl_apply_mask6(char *dest, const char *ipv6_address_str, int mask_bits);
 void *create_server_conf(apr_pool_t *pool, server_rec *server);
 void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD);
 void *create_dir_conf(apr_pool_t *pool, char *arg);
@@ -175,24 +178,21 @@ static int request_handler(request_rec *r)
     apr_sockaddr_info_copy(&ipAdd, r->useragent_addr, r->pool);
 
     char *ip;
+    char *masked;
     apr_sockaddr_ip_get(&ip, ipAdd);
 
     // check if IPv4 or IPv6
     if (ipAdd->ipaddr_len == 4) {
-        // IPv4, use single uint32_t
-        uint32_t maskBits = (per_dir_conf->netmask4) ? per_dir_conf->netmask4 : server_conf->netmask4;
-        uint32_t mask = 0xffffffff >> (32 - maskBits);
-        uint32_t ip4;
-        // convert to single uint32_t, apply mask and copy back to char *ip
-        memcpy(&ip4, ipAdd->ipaddr_ptr, ipAdd->ipaddr_len);
-        ip4 = (ip4 & mask);
-        memcpy(ipAdd->ipaddr_ptr, &ip4, ipAdd->ipaddr_len);
+        int maskBits = (per_dir_conf->netmask4) ? per_dir_conf->netmask4 : server_conf->netmask4;
+        masked = apr_pcalloc(r->pool, INET_ADDRSTRLEN);
+        mrl_apply_mask4(masked, ip, maskBits);
     } else {
-        // TODO: IPv6, use 4 uint32_t?
+        int maskBits = (per_dir_conf->netmask6) ? per_dir_conf->netmask6 : server_conf->netmask6;
+        masked = apr_pcalloc(r->pool, INET6_ADDRSTRLEN);
+        mrl_apply_mask6(masked, ip, maskBits);
     }
 
-    apr_sockaddr_ip_get(&ip, ipAdd);
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s", ip);
+    ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler ip %s %s", ip, masked);
 
     long numHits = 0;
     char *hits;
@@ -227,6 +227,55 @@ uint64_t mrl_get_time_ms()
     struct timeval tv;
     gettimeofday(&tv,NULL);
     return (((uint64_t)tv.tv_sec)*1000)+(tv.tv_usec/1000);    
+}
+
+/** 
+==============
+Subnet helpers
+==============
+*/
+void *mrl_apply_mask4(char *dest, const char *ipv4_address_str, int mask_bits) {
+    struct in_addr ipv4_address, subnet_mask, subnet_address;
+
+    // Convert IPv4 address from string to binary form
+    if (inet_pton(AF_INET, ipv4_address_str, &ipv4_address) != 1) {
+        return NULL;
+    }
+
+    // Generate subnet mask based on the number of mask bits
+    subnet_address.s_addr = ipv4_address.s_addr & (0xffffffff >> (32 - mask_bits)); 
+
+    // Convert subnet address from binary form to string
+    inet_ntop(AF_INET, &subnet_address, dest, INET_ADDRSTRLEN);
+
+    return NULL;
+}
+
+void *mrl_apply_mask6(char *dest, const char *ipv6_address_str, int mask_bits) {
+    struct in6_addr ipv6_address, subnet_mask, subnet_address;
+
+    // Convert IPv6 address from string to binary form
+    if (inet_pton(AF_INET6, ipv6_address_str, &ipv6_address) != 1) {
+        return NULL;
+    }
+
+    // Generate subnet mask based on the number of mask bits
+    for (int i = 0; i < 16; i++) {
+        if (mask_bits >= 8) {
+            subnet_address.s6_addr[i] = ipv6_address.s6_addr[i]; // implied & 0xFF << 0
+            mask_bits -= 8;
+        } else if (mask_bits > 0) {
+            subnet_address.s6_addr[i] = ipv6_address.s6_addr[i] & (0xFF << (8 - mask_bits));
+            mask_bits = 0;
+        } else {
+            subnet_address.s6_addr[i] = 0;
+        }
+    }
+
+    // Convert subnet address from binary form to string
+    inet_ntop(AF_INET6, &subnet_address, dest, INET6_ADDRSTRLEN);
+
+    return NULL;
 }
 
 /**
