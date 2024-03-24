@@ -16,10 +16,10 @@ serves static assets. You could also apply a different bucket with higher limits
 would require more CPU and memory as opposed to just disabling the engine.
 
 ### Arguments
-`mode`
+`mode`  
 When set to `off`, the engine is disabled and will not process or count the requests. This is the default value.  
 When set to `on`, the engine is enabled and will perform counting of requests. When a requests exceeds the
-limit, it will be blocked.
+limit, it will be blocked.  
 When set to `reportonly`, the engine is behave like in `on` mode, with the exception that will not block any requests.
 It will simple report any would-be blocks in the error log. This can be used to assess the impact of the module and/or
 configuration without actually impacting traffic. 
