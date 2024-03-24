@@ -107,7 +107,7 @@ void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, base->server, "merge_server_conf %s", add->server->defn_name);
 
     /* Merge configurations */
-    cfg->enabled = (add->enabled == 2) ? base->enabled : add->enabled ;
+    cfg->enabled = (add->enabled == -1) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
     cfg->buckets = (add->buckets) ? (apr_array_header_t *)add->buckets : (apr_array_header_t *)base->buckets;
     cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
@@ -123,7 +123,7 @@ void *create_dir_conf(apr_pool_t *pool, char *arg) {
     mrl_config *cfg = apr_pcalloc(pool, sizeof(mrl_config));
     if(cfg) {
         /* Set some default values */
-        cfg->enabled = 2;
+        cfg->enabled = -1;
         cfg->bucket = NULL;
         cfg->netmask4 = 32;
         cfg->netmask6 = 64;
@@ -140,7 +140,7 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     mrl_config *cfg = (mrl_config *) create_dir_conf(pool, "");
     
     /* Merge configurations */
-    cfg->enabled = (add->enabled == 2) ? base->enabled : add->enabled ;
+    cfg->enabled = (add->enabled == -1) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
     cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
     cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
@@ -157,7 +157,7 @@ static int request_handler(request_rec *r)
     mrl_config *per_dir_conf = (mrl_config *) ap_get_module_config(r->per_dir_config, &request_limit_module);
 
     /* Check if this request is limited */
-    if (per_dir_conf->enabled == 0 || (per_dir_conf->enabled == 2 && server_conf->enabled != 1)) {
+    if (per_dir_conf->enabled == 0 || (per_dir_conf->enabled == -1 && server_conf->enabled < 1)) {
         ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler not enabled");
         return (DECLINED);
     } 
@@ -215,11 +215,18 @@ static int request_handler(request_rec *r)
     ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s %d/%d", ip, (int)numHits, bucket->requests);
     apr_table_set(bucket->ips, ip, apr_ltoa(r->pool, (long) numHits));
 
-    /* TODO: Check if this request has exceeded the limit */
+    /* Check if this request has exceeded the limit */
     if (numHits > bucket->requests) {
-        /* block request */
-        ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler blocked ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
-        return (per_dir_conf->statusCode ? per_dir_conf->statusCode : server_conf->statusCode);
+        /* Limit exceeded */
+        if (per_dir_conf->enabled == 1 || (per_dir_conf->enabled == -1 && server_conf->enabled == 1)) {
+            // block request
+            ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler blocked ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
+            return (per_dir_conf->statusCode ? per_dir_conf->statusCode : server_conf->statusCode);
+        } else {
+            // report only, don't block
+            ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler report-only ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
+            return (DECLINED);
+        }
     } else {
         /* We're not acting on this request */
         ap_log_error (APLOG_MARK, APLOG_TRACE1, 0, r->server, "request_handler allowed ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
@@ -335,6 +342,8 @@ const char *mrl_set_enabled(cmd_parms *cmd, void *cfg, const char *arg)
             conf->enabled = 1;
         } else if (!strcasecmp(arg, "off")) {
             conf->enabled = 0;
+        } else if (!strcasecmp(arg, "reportonly")) {
+            conf->enabled = 2;
         } else {
             return "ReqLimitEngine value is invalid";
         }

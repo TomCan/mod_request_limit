@@ -10,12 +10,19 @@ The `mod_request_limit` module logs block events as error, while most other info
 When troubleshooting, set the LogLevel of `debug` or `trace1`. 
 
 ## ReqLimitEngine Directive
-The `ReqLimitEngine on|off` directive enables of disables the processing of the requests by the request limiting engine.
-When set to `off`, no request limit or counting of requests is performed. 
+The `ReqLimitEngine mode` directive enables of disables the processing of the requests by the request limiting engine.
+This can be useful in different context. For example, you could disable the engine in a Directory of Location that
+serves static assets. You could also apply a different bucket with higher limits, but processing of such requests 
+would require more CPU and memory as opposed to just disabling the engine.
 
-This setting allows you to enable/disable the engine for different contexts. For example, you could disable the engine
-in a Directory of Location that servers static assets. You could also apply a different bucket with higher limits,
-but processing of such requests would require more CPU and memory as opposed to just disabling the engine.
+### Arguments
+`mode`
+When set to `off`, the engine is disabled and will process or count the requests. This is the default value.  
+When set to `on`, the engine is enabled and will perform counting of requests. When a requests exceeds the
+limit, it will be blocked.
+When set to `reportonly`, the engine is behave like in `on` mode, with the exception that will not block any requests.
+It will simple report any would-be blocks in the error log. This can be used to assess the impact of the module and/or
+configuration without actually impacting traffic. 
 
 ```
 <Directory /var/www/html>

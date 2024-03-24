@@ -1,5 +1,9 @@
 # ModReqLimit Change Log
 
+## unversioned changes in main
+
+- added `reportonly` mode through `ReqLimitEngine` directive.
+
 ## v0.2.0
 
 - added ability to apply mask on client IP (impose limits on subnet rather than single IP)
