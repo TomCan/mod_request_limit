@@ -54,12 +54,12 @@ static int request_handler(request_rec *r);
 /** directives */
 static const command_rec directives[] =
 {
-    AP_INIT_TAKE1("ReqLimitEngine", mrl_set_enabled, NULL, ACCESS_CONF, "Enable or disable mod_request_limit processing"),
+    AP_INIT_TAKE1("ReqLimitEngine", mrl_set_enabled, NULL, OR_LIMIT, "Enable or disable mod_request_limit processing"),
     AP_INIT_TAKE3("ReqLimitBucket", mrl_create_bucket, NULL, RSRC_CONF, "Create a bucket"),
-    AP_INIT_TAKE1("ReqLimitSetBucket", mrl_set_bucket, NULL, ACCESS_CONF, "Set the name of the bucket to use"),
-    AP_INIT_TAKE1("ReqLimitSetNetmask4", mrl_set_netmask4, NULL, ACCESS_CONF, "Set the netmask bits for IPv4 addresses"),
-    AP_INIT_TAKE1("ReqLimitSetNetmask6", mrl_set_netmask6, NULL, ACCESS_CONF, "Set the netmask bits for IPv6 addresses"),
-    AP_INIT_TAKE1("ReqLimitHTTPStatus", mrl_set_httpstatus, NULL, ACCESS_CONF, "Set the HTTP status code used when blocking"),
+    AP_INIT_TAKE1("ReqLimitSetBucket", mrl_set_bucket, NULL, OR_LIMIT, "Set the name of the bucket to use"),
+    AP_INIT_TAKE1("ReqLimitSetNetmask4", mrl_set_netmask4, NULL, OR_LIMIT, "Set the netmask bits for IPv4 addresses"),
+    AP_INIT_TAKE1("ReqLimitSetNetmask6", mrl_set_netmask6, NULL, OR_LIMIT, "Set the netmask bits for IPv6 addresses"),
+    AP_INIT_TAKE1("ReqLimitHTTPStatus", mrl_set_httpstatus, NULL, OR_LIMIT, "Set the HTTP status code used when blocking"),
     { NULL }
 };
 
