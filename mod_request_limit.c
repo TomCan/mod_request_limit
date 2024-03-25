@@ -35,12 +35,12 @@ typedef struct {
 #define DEFAULT_STATUS_CODE 429
 
 /** prototypes */
-const char *mrl_create_bucket(cmd_parms *cmd, void *cfg, const char *arg1, const char *arg2, const char *arg3);
-const char *mrl_set_enabled(cmd_parms *cmd, void *cfg, const char *arg);
-const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *arg);
-const char *mrl_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg);
-const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg);
-const char *mrl_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_cmd_bucket(cmd_parms *cmd, void *cfg, const char *arg1, const char *arg2, const char *arg3);
+const char *mrl_cmd_engine(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_cmd_set_bucket(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_cmd_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_cmd_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_cmd_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg);
 uint64_t mrl_get_time_ms();
 void *mrl_apply_mask4(char *dest, const char *ipv4_address_str, int mask_bits);
 void *mrl_apply_mask6(char *dest, const char *ipv6_address_str, int mask_bits);
@@ -54,12 +54,12 @@ static int request_handler(request_rec *r);
 /** directives */
 static const command_rec directives[] =
 {
-    AP_INIT_TAKE1("ReqLimitEngine", mrl_set_enabled, NULL, OR_LIMIT, "Enable or disable mod_request_limit processing"),
-    AP_INIT_TAKE3("ReqLimitBucket", mrl_create_bucket, NULL, RSRC_CONF, "Create a bucket"),
-    AP_INIT_TAKE1("ReqLimitSetBucket", mrl_set_bucket, NULL, OR_LIMIT, "Set the name of the bucket to use"),
-    AP_INIT_TAKE1("ReqLimitSetNetmask4", mrl_set_netmask4, NULL, OR_LIMIT, "Set the netmask bits for IPv4 addresses"),
-    AP_INIT_TAKE1("ReqLimitSetNetmask6", mrl_set_netmask6, NULL, OR_LIMIT, "Set the netmask bits for IPv6 addresses"),
-    AP_INIT_TAKE1("ReqLimitHTTPStatus", mrl_set_httpstatus, NULL, OR_LIMIT, "Set the HTTP status code used when blocking"),
+    AP_INIT_TAKE1("ReqLimitEngine", mrl_cmd_engine, NULL, OR_FILEINFO, "Enable or disable mod_request_limit processing"),
+    AP_INIT_TAKE3("ReqLimitBucket", mrl_cmd_bucket, NULL, RSRC_CONF, "Create a bucket"),
+    AP_INIT_TAKE1("ReqLimitSetBucket", mrl_cmd_set_bucket, NULL, OR_FILEINFO, "Set the name of the bucket to use"),
+    AP_INIT_TAKE1("ReqLimitSetNetmask4", mrl_cmd_set_netmask4, NULL, OR_FILEINFO, "Set the netmask bits for IPv4 addresses"),
+    AP_INIT_TAKE1("ReqLimitSetNetmask6", mrl_cmd_set_netmask6, NULL, OR_FILEINFO, "Set the netmask bits for IPv6 addresses"),
+    AP_INIT_TAKE1("ReqLimitHTTPStatus", mrl_cmd_set_httpstatus, NULL, OR_FILEINFO, "Set the HTTP status code used when blocking"),
     { NULL }
 };
 
@@ -301,15 +301,17 @@ Configuration handlers
 ======================
 */
 
-const char *mrl_create_bucket(cmd_parms *cmd, void *cfg, const char *name, const char *requests, const char *timespan)
+/** ReqLimitBucket mrl_cmd_bucket */
+const char *mrl_cmd_bucket(cmd_parms *cmd, void *cfg, const char *name, const char *requests, const char *timespan)
 {
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_create_bucket %s %s %s %s", cmd->server->defn_name, name, requests, timespan);
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_bucket %s %s %s %s", cmd->server->defn_name, name, requests, timespan);
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    mrl_config    *conf = (mrl_config *) ap_get_module_config(cmd->server->module_config, &request_limit_module);
+    /*~~~ get configs ~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config *sconf;
+    sconf = ap_get_module_config(cmd->server->module_config, &request_limit_module);
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    if(conf)
+    if(sconf)
     {
         // Create bucket object and populate config
         mrl_bucket *bucket = apr_pcalloc(cmd->pool, sizeof(mrl_bucket));
@@ -320,57 +322,66 @@ const char *mrl_create_bucket(cmd_parms *cmd, void *cfg, const char *name, const
         bucket->lastReset = mrl_get_time_ms();
 
         // Add newly created bucket to server config
-        *(mrl_bucket **)apr_array_push(conf->buckets) = bucket;
+        *(mrl_bucket **)apr_array_push(sconf->buckets) = bucket;
     }
 
     return NULL;
 }
 
 
-/** ReqLimitEngine mrl_set_enabled */
-const char *mrl_set_enabled(cmd_parms *cmd, void *cfg, const char *arg)
+/** ReqLimitEngine mrl_cmd_engine */
+const char *mrl_cmd_engine(cmd_parms *cmd, void *cfg, const char *arg)
 {
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_enabled %s %s", cmd->server->defn_name, arg);
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_engine %s %s %s", cmd->server->defn_name, arg, cmd->path);
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    mrl_config    *conf = (mrl_config *) cfg;
+    /*~~~ get configs ~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config *dconf = cfg;
+    mrl_config *sconf;
+    sconf = ap_get_module_config(cmd->server->module_config, &request_limit_module);
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    if(conf)
+    if (!strcasecmp(arg, "on")) {
+        dconf->enabled = 1;
+    } else if (!strcasecmp(arg, "off")) {
+        dconf->enabled = 0;
+    } else if (!strcasecmp(arg, "reportonly")) {
+        dconf->enabled = 2;
+    } else {
+        return "ReqLimitEngine value is invalid";
+    }
+
+    if(cmd->path == NULL)
     {
-        if (!strcasecmp(arg, "on")) {
-            conf->enabled = 1;
-        } else if (!strcasecmp(arg, "off")) {
-            conf->enabled = 0;
-        } else if (!strcasecmp(arg, "reportonly")) {
-            conf->enabled = 2;
-        } else {
-            return "ReqLimitEngine value is invalid";
-        }
+        // server config, also set sconf
+        sconf->enabled = dconf->enabled;
     }
 
     return NULL;
 }
 
-/** ReqLimitSetBucket mrl_set_bucket */
-const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *name)
+/** ReqLimitSetBucket mrl_cmd_set_bucket */
+const char *mrl_cmd_set_bucket(cmd_parms *cmd, void *cfg, const char *name)
 {
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_bucket %s %s", cmd->server->defn_name, name);
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_set_bucket %s %s %s", cmd->server->defn_name, name, cmd->path);
 
+    /*~~~ get configs ~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config *dconf = cfg;
+    mrl_config *sconf;
+    sconf = ap_get_module_config(cmd->server->module_config, &request_limit_module);
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    mrl_config    *conf = (mrl_config *) cfg;
-    mrl_config    *server_conf = (mrl_config *) ap_get_module_config(cmd->server->module_config, &request_limit_module);
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-
-    if (server_conf && server_conf->buckets) {
+    if (sconf && sconf->buckets) {
         int i;
-        int num_buckets = server_conf->buckets->nelts;    
+        int num_buckets = sconf->buckets->nelts;    
         for (i = 0; i < num_buckets; i++) {
-            mrl_bucket *current_bucket = APR_ARRAY_IDX(server_conf->buckets, i, mrl_bucket *);
+            mrl_bucket *current_bucket = APR_ARRAY_IDX(sconf->buckets, i, mrl_bucket *);
             if (0 == strcmp(name, current_bucket->name)) {
                 ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_bucket using bucket %s", current_bucket->name);
-                conf->bucket = current_bucket;
+                dconf->bucket = current_bucket;
+                if (cmd->path == NULL) {
+                    // server config, also set values in sconf
+                    sconf->bucket = dconf->bucket;
+                }
                 return NULL;
             }
         }
@@ -379,61 +390,73 @@ const char *mrl_set_bucket(cmd_parms *cmd, void *cfg, const char *name)
     return "ReqLimitSetBucket bucket does not exist";
 }
 
-/** ReqLimitSetNetmask4 mrl_set_netmask4 */
-const char *mrl_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg)
+/** ReqLimitSetNetmask4 mrl_cmd_set_netmask4 */
+const char *mrl_cmd_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg)
 {
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_netmask4 %s %s", cmd->server->defn_name, arg);
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_set_netmask4 %s %s %s", cmd->server->defn_name, arg, cmd->path);
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    mrl_config    *conf = (mrl_config *) cfg;
+    /*~~~ get configs ~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config *dconf = cfg;
+    mrl_config *sconf;
+    sconf = ap_get_module_config(cmd->server->module_config, &request_limit_module);
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    if(conf)
-    {
-        conf->netmask4 = strtol(arg, NULL, 10);
-        if (conf->netmask4 < 0 || conf->netmask4 > 32) {
-            return "ReqLimitSetNetmask4 value must be between 0 and 32";
-        }
+    dconf->netmask4 = strtol(arg, NULL, 10);
+    if (dconf->netmask4 < 0 || dconf->netmask4 > 32) {
+        return "ReqLimitSetNetmask4 value must be between 0 and 32";
+    }
+
+    if (cmd->path == NULL) {
+        // server config, also set values in sconf
+        sconf->netmask4 = dconf->netmask4;
     }
 
     return NULL;
 }
 
-/** ReqLimitSetNetmask6 mrl_set_netmask6 */
-const char *mrl_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg)
+/** ReqLimitSetNetmask6 mrl_cmd_set_netmask6 */
+const char *mrl_cmd_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg)
 {
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_netmask6 %s %s", cmd->server->defn_name, arg);
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_set_netmask6 %s %s %s", cmd->server->defn_name, arg, cmd->path);
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    mrl_config    *conf = (mrl_config *) cfg;
+    /*~~~ get configs ~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config *dconf = cfg;
+    mrl_config *sconf;
+    sconf = ap_get_module_config(cmd->server->module_config, &request_limit_module);
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    if(conf)
-    {
-        conf->netmask6 = strtol(arg, NULL, 10);
-        if (conf->netmask6 < 0 || conf->netmask4 > 128) {
-            return "ReqLimitSetNetmask6 value must be between 0 and 128";
-        }
+    dconf->netmask6 = strtol(arg, NULL, 10);
+    if (dconf->netmask6 < 0 || dconf->netmask6 > 128) {
+        return "ReqLimitSetNetmask6 value must be between 0 and 128";
+    }
+
+    if (cmd->path == NULL) {
+        // server config, also set values in sconf
+        sconf->netmask6 = dconf->netmask6;
     }
 
     return NULL;
 }
 
-/** ReqLimitHTTPStatus mrl_set_httpstatus */
-const char *mrl_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg)
+/** ReqLimitHTTPStatus mrl_cmd_set_httpstatus */
+const char *mrl_cmd_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg)
 {
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_set_httpstatus %s %s", cmd->server->defn_name, arg);
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_set_httpstatus %s %s %s", cmd->server->defn_name, arg, cmd->path);
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    mrl_config    *conf = (mrl_config *) cfg;
+    /*~~~ get configs ~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config *dconf = cfg;
+    mrl_config *sconf;
+    sconf = ap_get_module_config(cmd->server->module_config, &request_limit_module);
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    if(conf)
-    {
-        conf->statusCode = strtol(arg, NULL, 10);
-        if (conf->statusCode < 100 || conf->statusCode > 999) {
-            return "ReqLimitHTTPStatus value must be between 100 and 999";
-        }
+    dconf->statusCode = strtol(arg, NULL, 10);
+    if (dconf->statusCode < 100 || dconf->statusCode > 999) {
+        return "ReqLimitHTTPStatus value must be between 100 and 999";
+    }
+
+    if (cmd->path == NULL) {
+        // server config, also set values in sconf
+        sconf->statusCode = dconf->statusCode;
     }
 
     return NULL;
