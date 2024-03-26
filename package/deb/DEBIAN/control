@@ -1,5 +1,5 @@
 Package: libapache2-mod-request-limit
-Version: 0.2.1
+Version: {VERSION}
 Depends: apache2
 Priority: optional
 Section: main
