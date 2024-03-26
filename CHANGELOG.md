@@ -2,7 +2,11 @@
 
 ## unversioned changes in main
 
+## v0.3.0
+
+- fixed locations of configuration Directives
 - added `reportonly` mode through `ReqLimitEngine` directive.
+- added Makefile for build and package
 
 ## v0.2.0
 
