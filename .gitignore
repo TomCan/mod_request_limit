@@ -2,3 +2,5 @@
 mod_request_limit.la
 mod_request_limit.lo
 mod_request_limit.slo
+package/tmp
+package/tmp.deb

@@ -1,0 +1,8 @@
+Package: libapache2-mod-request-limit
+Version: 0.2.1
+Depends: apache2
+Priority: optional
+Section: main
+Architecture: all
+Maintainer: Tom Cannaerts <mot@tom.be>
+Description: Apache2 request limiting module
