@@ -1,6 +1,8 @@
 include .env
 
-build: apxs -i -a -c mod_request_limit.c
+build: module
+module:
+	apxs -i -a -c mod_request_limit.c
 
 package-deb:
 	rm -rf package/tmp && mkdir package/tmp
