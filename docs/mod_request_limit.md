@@ -119,3 +119,12 @@ The HTTP status code that is returned. This can be any number between `100` and 
 return a `500` (internal server error) when an unknown status code is used.
 The default value is `429` (too many requests), but `503` (service unavailable) or `403` (forbidden) are also
 good candidates when using clients that don't handle `429` correct.
+
+## ReqLimitAllow Directive
+The `ReqLimitAllow ip` directive allows you to define IP addresses or subnets that are always allowed. You can repeat
+this directive to add multiple allowed IP addresses. If the client IP address matches one of the allowed ips in that
+context, processing is stopped for that request.
+
+### Arguments
+`ip`  
+The IP address or subnet (CIDR notation) to be added to the allow list. 

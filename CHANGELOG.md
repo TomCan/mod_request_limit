@@ -2,6 +2,9 @@
 
 ## unversioned changes in main
 
+- added ability to exclude IP addresses
+  - `ReqLimitAllow`
+
 ## v0.3.0
 
 - fixed locations of configuration Directives
@@ -27,7 +30,6 @@ Basic functionality, first "working" version.
 ## v1.0.0 targets
 
 Following features are targets (or ideas) for the v1.0.0 release, should we ever get there.
-- exclude IPs 
 - multiple buckets per request
 - sliding window/timeframe
 - extended block period once triggered

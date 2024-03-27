@@ -29,7 +29,13 @@ typedef struct {
     int     netmask4;               /* netmask to apply to IPv4 address */
     int     netmask6;               /* netmask to apply to IPv6 address */
     int     statusCode;             /* HTTP Status code to return on block */
+    apr_array_header_t *allowed;    /* List of ips to be allowed */
 } mrl_config;
+
+typedef struct {
+    char    *cidr;          /* ip or CIDR notation */
+} mrl_ip;
+
 
 /** constants / defines */
 #define DEFAULT_STATUS_CODE 429
@@ -41,9 +47,11 @@ const char *mrl_cmd_set_bucket(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_cmd_set_netmask4(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_cmd_set_netmask6(cmd_parms *cmd, void *cfg, const char *arg);
 const char *mrl_cmd_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg);
+const char *mrl_cmd_allow(cmd_parms *cmd, void *cfg, const char *arg);
 uint64_t mrl_get_time_ms();
 void *mrl_apply_mask4(char *dest, const char *ipv4_address_str, int mask_bits);
 void *mrl_apply_mask6(char *dest, const char *ipv6_address_str, int mask_bits);
+int mrl_check_allowed (request_rec *r, mrl_config *conf);
 void *create_server_conf(apr_pool_t *pool, server_rec *server);
 void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD);
 void *create_dir_conf(apr_pool_t *pool, char *arg);
@@ -60,6 +68,7 @@ static const command_rec directives[] =
     AP_INIT_TAKE1("ReqLimitSetNetmask4", mrl_cmd_set_netmask4, NULL, OR_FILEINFO, "Set the netmask bits for IPv4 addresses"),
     AP_INIT_TAKE1("ReqLimitSetNetmask6", mrl_cmd_set_netmask6, NULL, OR_FILEINFO, "Set the netmask bits for IPv6 addresses"),
     AP_INIT_TAKE1("ReqLimitHTTPStatus", mrl_cmd_set_httpstatus, NULL, OR_FILEINFO, "Set the HTTP status code used when blocking"),
+    AP_INIT_TAKE1("ReqLimitAllow", mrl_cmd_allow, NULL, OR_FILEINFO, "Add IP to allow list"),
     { NULL }
 };
 
@@ -94,6 +103,8 @@ void *create_server_conf(apr_pool_t *pool, server_rec *server) {
         cfg->netmask4 = 32;
         cfg->netmask6 = 64;
         cfg->statusCode = DEFAULT_STATUS_CODE;
+        cfg->allowed = apr_array_make(pool, 0, sizeof(mrl_ip*));
+
     }
     return cfg;
 }
@@ -113,6 +124,7 @@ void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
     cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
     cfg->statusCode = (add->statusCode) ? add->statusCode : base->statusCode;
+    cfg->allowed = (add->allowed) ? add->allowed : base->allowed;
 
     strcpy(cfg->src, "ms");
     
@@ -129,6 +141,7 @@ void *create_dir_conf(apr_pool_t *pool, char *arg) {
         cfg->netmask6 = 64;
         cfg->statusCode = 0;
         strcpy(cfg->src, "cd");
+        cfg->allowed = apr_array_make(pool, 0, sizeof(mrl_ip));
     }
     return cfg;
 }
@@ -146,6 +159,7 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
     cfg->statusCode = (add->statusCode) ? add->statusCode : base->statusCode;
     strcpy(cfg->src, "md");
+    cfg->allowed = (add->allowed) ? add->allowed : base->allowed;
     
     return cfg;
 }
@@ -190,6 +204,11 @@ static int request_handler(request_rec *r)
     char *ip;
     char *masked;
     apr_sockaddr_ip_get(&ip, ipAdd);
+
+    if ((mrl_check_allowed(r, per_dir_conf) + mrl_check_allowed(r, server_conf)) > 0) {
+        ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s on allow list", ip);
+        return (DECLINED);
+    }
 
     // check if IPv4 or IPv6
     if (ipAdd->ipaddr_len == 4) {
@@ -293,6 +312,51 @@ void *mrl_apply_mask6(char *dest, const char *ipv6_address_str, int mask_bits) {
     inet_ntop(AF_INET6, &subnet_address, dest, INET6_ADDRSTRLEN);
 
     return NULL;
+}
+
+/**
+==================
+Allowedlist helper
+==================
+*/
+int mrl_check_allowed (request_rec *r, mrl_config *conf) {
+
+    mrl_ip *allowedIps = (mrl_ip *) conf->allowed->elts;
+    mrl_ip *ip;
+
+    char *clientIpC;
+    apr_sockaddr_ip_get(&clientIpC, r->useragent_addr);
+
+    int allowed = 0;
+
+    apr_ipsubnet_t *checkSubnet;
+    char *checkAddress;
+    char *checkIp;
+    char *checkMask;
+
+    for (int i = 0; i < conf->allowed->nelts; i++) {
+        ip = &allowedIps[i];
+
+        if (strchr(ip->cidr, '/') == NULL) {
+            /* Not CIDR, try exact match */
+            if (strcmp(ip->cidr, clientIpC) == 0) {
+                allowed = 1;
+                continue;
+            }
+        } else {
+            /* assume CIDR, subnet match */
+            checkAddress = apr_pstrdup(r->pool, ip->cidr);
+            checkIp = apr_strtok(checkAddress, "/", &checkMask);
+            apr_ipsubnet_create(&checkSubnet, checkIp, checkMask, r->pool);
+
+            if (apr_ipsubnet_test(checkSubnet, r->useragent_addr) != 0) {
+                allowed = 1;
+            }
+        }
+        ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "Matching ip %s against %s. Allowed = %d", clientIpC, ip->cidr, allowed);
+    }
+
+    return allowed;
 }
 
 /**
@@ -459,5 +523,31 @@ const char *mrl_cmd_set_httpstatus(cmd_parms *cmd, void *cfg, const char *arg)
         sconf->statusCode = dconf->statusCode;
     }
 
+    return NULL;
+}
+
+/** ReqLimitAllow mrl_cmd_allow */
+const char *mrl_cmd_allow(cmd_parms *cmd, void *cfg, const char *arg)
+{
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_allow %s %s %s", cmd->server->defn_name, arg, cmd->path);
+ 
+    /*~~~ get configs ~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    mrl_config *dconf = cfg;
+    mrl_config *sconf;
+    sconf = ap_get_module_config(cmd->server->module_config, &request_limit_module);
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    // push on list
+    mrl_ip *ip = apr_array_push(dconf->allowed);
+    ip->cidr = (char *) arg;
+
+    if (cmd->path == NULL) {
+        // server config, also set values in sconf
+        mrl_ip *ip = apr_array_push(sconf->allowed);
+        ip->cidr = (char *) arg;
+    }
+ 
+   ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, cmd->server, "mrl_cmd_allow now contains elts d %d s %d", dconf->allowed->nelts, sconf->allowed->nelts);
+ 
     return NULL;
 }
