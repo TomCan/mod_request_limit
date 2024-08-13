@@ -28,9 +28,9 @@ Basic functionality, first "working" version.
 - added current state of WIP
 - updated README
 
-## v1.0.0 targets
+## Future targets
 
-Following features are targets (or ideas) for the v1.0.0 release, should we ever get there.
+Following features are targets or ideas for future releases. Considder it a non-binding TODO-list.
 - multiple buckets per request
 - sliding window/timeframe
 - extended block period once triggered
