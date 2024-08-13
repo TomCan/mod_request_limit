@@ -35,11 +35,11 @@ a sliding windows, it's just a counter that resets to 0. For this reason, it's a
 Once a bucket is created, you can assign requests to that bucket from Directory of Location directives
 ```
 <Directory /var/www/html>
-    ReqLimitUseBucket mywebsite
+    ReqLimitSetBucket mywebsite
 </Directory>
 
 <Location /login.php>
-    ReqLimitUseBucket mylogin
+    ReqLimitSetBucket mylogin
 </Location>
 ```
 
