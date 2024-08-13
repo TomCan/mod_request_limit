@@ -39,6 +39,10 @@ typedef struct {
 
 /** constants / defines */
 #define DEFAULT_STATUS_CODE 429
+#define MRL_ENGINE_MODE_INHERIT -1
+#define MRL_ENGINE_MODE_OFF 0
+#define MRL_ENGINE_MODE_ON 1
+#define MRL_ENGINE_MODE_REPORTONLY 2
 
 /** prototypes */
 const char *mrl_cmd_bucket(cmd_parms *cmd, void *cfg, const char *arg1, const char *arg2, const char *arg3);
@@ -96,7 +100,7 @@ void *create_server_conf(apr_pool_t *pool, server_rec *server) {
     if(cfg) {
         /* Set some default values */
         strcpy(cfg->src, "cs");
-        cfg->enabled = 2;
+        cfg->enabled = MRL_ENGINE_MODE_OFF;
         cfg->bucket = NULL;
         cfg->server = server;
         cfg->buckets = apr_array_make(pool, 5, sizeof(mrl_bucket*));
@@ -118,7 +122,7 @@ void *merge_server_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, base->server, "merge_server_conf %s", add->server->defn_name);
 
     /* Merge configurations */
-    cfg->enabled = (add->enabled == -1) ? base->enabled : add->enabled ;
+    cfg->enabled = (add->enabled == MRL_ENGINE_MODE_INHERIT) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
     cfg->buckets = (add->buckets) ? (apr_array_header_t *)add->buckets : (apr_array_header_t *)base->buckets;
     cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
@@ -135,7 +139,7 @@ void *create_dir_conf(apr_pool_t *pool, char *arg) {
     mrl_config *cfg = apr_pcalloc(pool, sizeof(mrl_config));
     if(cfg) {
         /* Set some default values */
-        cfg->enabled = -1;
+        cfg->enabled = MRL_ENGINE_MODE_INHERIT;
         cfg->bucket = NULL;
         cfg->netmask4 = 32;
         cfg->netmask6 = 64;
@@ -153,7 +157,7 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD) {
     mrl_config *cfg = (mrl_config *) create_dir_conf(pool, "");
     
     /* Merge configurations */
-    cfg->enabled = (add->enabled == -1) ? base->enabled : add->enabled ;
+    cfg->enabled = (add->enabled == MRL_ENGINE_MODE_INHERIT) ? base->enabled : add->enabled ;
     cfg->bucket = (add->bucket) ? add->bucket : base->bucket;
     cfg->netmask4 = (add->netmask4) ? add->netmask4 : base->netmask4;
     cfg->netmask6 = (add->netmask6) ? add->netmask6 : base->netmask6;
@@ -171,7 +175,7 @@ static int request_handler(request_rec *r)
     mrl_config *per_dir_conf = (mrl_config *) ap_get_module_config(r->per_dir_config, &request_limit_module);
 
     /* Check if this request is limited */
-    if (per_dir_conf->enabled == 0 || (per_dir_conf->enabled == -1 && server_conf->enabled < 1)) {
+    if (per_dir_conf->enabled == MRL_ENGINE_MODE_OFF || (per_dir_conf->enabled == MRL_ENGINE_MODE_INHERIT && server_conf->enabled < MRL_ENGINE_MODE_ON)) {
         ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler not enabled");
         return (DECLINED);
     } 
@@ -237,7 +241,7 @@ static int request_handler(request_rec *r)
     /* Check if this request has exceeded the limit */
     if (numHits > bucket->requests) {
         /* Limit exceeded */
-        if (per_dir_conf->enabled == 1 || (per_dir_conf->enabled == -1 && server_conf->enabled == 1)) {
+        if (per_dir_conf->enabled == MRL_ENGINE_MODE_ON || (per_dir_conf->enabled == MRL_ENGINE_MODE_INHERIT && server_conf->enabled == MRL_ENGINE_MODE_ON)) {
             // block request
             ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler blocked ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
             return (per_dir_conf->statusCode ? per_dir_conf->statusCode : server_conf->statusCode);
@@ -405,11 +409,11 @@ const char *mrl_cmd_engine(cmd_parms *cmd, void *cfg, const char *arg)
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     if (!strcasecmp(arg, "on")) {
-        dconf->enabled = 1;
+        dconf->enabled = MRL_ENGINE_MODE_ON;
     } else if (!strcasecmp(arg, "off")) {
-        dconf->enabled = 0;
+        dconf->enabled = MRL_ENGINE_MODE_OFF;
     } else if (!strcasecmp(arg, "reportonly")) {
-        dconf->enabled = 2;
+        dconf->enabled = MRL_ENGINE_MODE_REPORTONLY;
     } else {
         return "ReqLimitEngine value is invalid";
     }
