@@ -1,8 +1,7 @@
 # ModReqLimit
-Because mod_ratelimit was already taken... ;) 
-
-# WIP ALERT WIP ALERT WIP ALERT
-Yes, still very much WIP. Expect things to change, break or be abandonned.
+mod_request_limit (ModReqLimit for short) is an modules for the Apache 2.4 httpd server. It allows server admins to
+limit the number of requests originating from a single ip or subnet. Different limits can be set based on Server, Directory, 
+Location/LocationMatch or Files/FilesMatch directives.
 
 ## How to build
 
@@ -12,7 +11,7 @@ apxs -i -a -c mod_request_limit.c
 ```
 
 ## Configuration
-The idea (can change) is to create 'buckets' that will receive the requests. On a bucket, you will define how many
+The concept is that you create 'buckets' that will receive the requests. On a bucket, you will define how many
 requests are allowed in what timeframe.
 ```
 <VirtualHost>
@@ -49,3 +48,5 @@ You can also disable the module for specific paths using `ReqLimitEngine`
     ReqLimitEngine off
 </Location>
 ```
+
+For more configuration options, [see the docs](docs/mod_request_limit.md).
