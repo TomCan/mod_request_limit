@@ -38,7 +38,7 @@ typedef struct {
 
 
 /** constants / defines */
-#define DEFAULT_STATUS_CODE 429
+#define MRL_DEFAULT_STATUS_CODE 429
 #define MRL_ENGINE_MODE_INHERIT -1
 #define MRL_ENGINE_MODE_OFF 0
 #define MRL_ENGINE_MODE_ON 1
@@ -106,7 +106,7 @@ void *create_server_conf(apr_pool_t *pool, server_rec *server) {
         cfg->buckets = apr_array_make(pool, 5, sizeof(mrl_bucket*));
         cfg->netmask4 = 32;
         cfg->netmask6 = 64;
-        cfg->statusCode = DEFAULT_STATUS_CODE;
+        cfg->statusCode = MRL_DEFAULT_STATUS_CODE;
         cfg->allowed = apr_array_make(pool, 0, sizeof(mrl_ip*));
 
     }
