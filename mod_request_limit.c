@@ -86,7 +86,7 @@ module AP_MODULE_DECLARE_DATA request_limit_module =
 static void register_hooks(apr_pool_t *pool)
 {
     /* Create a hook in the request handler, so we get called when a request arrives */
-    ap_hook_handler(request_handler, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_handler(request_handler, NULL, NULL, APR_HOOK_REALLY_FIRST);
 }
 
 
