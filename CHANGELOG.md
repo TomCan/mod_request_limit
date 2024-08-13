@@ -1,7 +1,8 @@
 # ModReqLimit Change Log
 
-## unversioned changes in main
+## v0.4.0
 
+- changed handler from AP_HOOK_MIDDLE to AP_HOOK_VERY_FIRST to run before mod_proxy/mod_proxy_fcgi
 - added ability to exclude IP addresses
   - `ReqLimitAllow`
 
