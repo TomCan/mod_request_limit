@@ -256,8 +256,7 @@ static int request_handler(request_rec *r)
         (*((uint64_t *)apr_array_push(hitQueue))) = now;
     }
     // re-save queue
-    const char *hitQueueString = (const char *)apr_array_copy(r->pool, hitQueue);
-    apr_table_set(bucket->ips, ip, (const char *)hitQueueString);
+    apr_table_set(bucket->ips, ip, (const char *)hitQueue);
 
     int numHits = (int)hitQueue->nelts;
     ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s %d/%d", ip, numHits, bucket->requests);
