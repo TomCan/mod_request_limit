@@ -195,12 +195,13 @@ static int request_handler(request_rec *r)
 
     /* Check to see if we need to clear the bucket */
     uint64_t now = mrl_get_time_ms();
+/*    
     if (now > (bucket->lastReset + bucket->timespan)) {
         ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler clearing bucket %s %lu %d", bucket->name, bucket->lastReset, bucket->timespan);
         bucket->lastReset = now;
         apr_table_clear(bucket->ips);
     }
-
+*/
     /* Add IP to list */
     apr_sockaddr_t *ipAdd;
     apr_sockaddr_info_copy(&ipAdd, r->useragent_addr, r->pool);
@@ -226,33 +227,56 @@ static int request_handler(request_rec *r)
         mrl_apply_mask6(masked, ip, maskBits);
         ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s masked %d to %s", ip, maskBits, masked);
     }
-
-    long numHits = 0;
-    char *hits;
-    hits = (char *)apr_table_get(bucket->ips, ip);
-    if (hits != NULL) {
-        numHits = strtol(hits, NULL, 10);
+    
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler getting array from table");
+    apr_array_header_t *hitQueue = (apr_array_header_t *)apr_table_get(bucket->ips, ip);
+    if (hitQueue == NULL) {
+        ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler hitqueue == NULL");
+        hitQueue = apr_array_make(r->pool, bucket->requests, sizeof(uint64_t));
     }
-    numHits++;
 
-    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s %d/%d", ip, (int)numHits, bucket->requests);
-    apr_table_set(bucket->ips, ip, apr_ltoa(r->pool, (long) numHits));
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler Looping over elements");
+    int i = 0;
+    while (i < hitQueue->nelts) {
+        ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request handler i = %d , nelts = %d", i, hitQueue->nelts);
+//        uint64_t element = APR_ARRAY_IDX(hitQueue, i, uint64_t);
+        uint64_t element = (((uint64_t *)hitQueue->elts)[i]);
+        if (element < now - bucket->timespan) {
+            // Remove the element by shifting the remaining elements
+            memmove(&(hitQueue->elts[i]), &(hitQueue->elts[i+1]), (hitQueue->nelts - i - 1) * sizeof(uint64_t));
+            hitQueue->nelts--;
+        } else {
+            i++;
+        }
+    }
+
+    if (hitQueue->nelts < bucket->requests) {
+        // add request to array
+        // APR_ARRAY_PUSH(hitQueue, uint64_t) = now;
+        (*((uint64_t *)apr_array_push(hitQueue))) = now;
+    }
+    // re-save queue
+    const char *hitQueueString = (const char *)apr_array_copy(r->pool, hitQueue);
+    apr_table_set(bucket->ips, ip, (const char *)hitQueueString);
+
+    int numHits = (int)hitQueue->nelts;
+    ap_log_error (APLOG_MARK, APLOG_DEBUG, 0, r->server, "request_handler ip %s %d/%d", ip, numHits, bucket->requests);
 
     /* Check if this request has exceeded the limit */
     if (numHits > bucket->requests) {
         /* Limit exceeded */
         if (per_dir_conf->enabled == MRL_ENGINE_MODE_ON || (per_dir_conf->enabled == MRL_ENGINE_MODE_INHERIT && server_conf->enabled == MRL_ENGINE_MODE_ON)) {
             // block request
-            ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler blocked ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
+            ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler blocked ip %s bucket %s %d/%d", ip, bucket->name, numHits, bucket->requests);
             return (per_dir_conf->statusCode ? per_dir_conf->statusCode : server_conf->statusCode);
         } else {
             // report only, don't block
-            ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler report-only ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
+            ap_log_error (APLOG_MARK, APLOG_ERR, 0, r->server, "request_handler report-only ip %s bucket %s %d/%d", ip, bucket->name, numHits, bucket->requests);
             return (DECLINED);
         }
     } else {
         /* We're not acting on this request */
-        ap_log_error (APLOG_MARK, APLOG_TRACE1, 0, r->server, "request_handler allowed ip %s bucket %s %lu/%d", ip, bucket->name, numHits, bucket->requests);
+        ap_log_error (APLOG_MARK, APLOG_TRACE1, 0, r->server, "request_handler allowed ip %s bucket %s %d/%d", ip, bucket->name, numHits, bucket->requests);
         return (DECLINED);
     }
 }
